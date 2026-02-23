@@ -2,7 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import ReactQuill from "react-quill-new";
 import "react-quill-new/dist/quill.snow.css";
 import { createBlogPost, listBlogPosts, updateBlogPost } from "../../lib/blog";
-import { uploadFileAndGetUrl, safeName } from "../../lib/storageUploads";
+import {
+  compressImageFile,
+  deleteByPath,
+  safeName,
+  storagePathFromDownloadUrl,
+  uploadBlobAndGetUrl,
+} from "../../lib/storageUploads";
 import { BLOG_TAGS } from "../../constants/tags";
 
 export default function AdminBlog({ onBack }) {
@@ -14,16 +20,19 @@ export default function AdminBlog({ onBack }) {
   const [selectedTags, setSelectedTags] = useState([]);
   const [published, setPublished] = useState(false);
 
-  // images (new)
+  // images (pending)
   const [coverFile, setCoverFile] = useState(null);
   const [coverPreview, setCoverPreview] = useState("");
 
   const [galleryFiles, setGalleryFiles] = useState([]); // File[]
   const [galleryPreviews, setGalleryPreviews] = useState([]); // string[]
 
-  // existing saved urls (when editing)
+  // existing saved (editing)
   const [existingCoverUrl, setExistingCoverUrl] = useState("");
-  const [existingGalleryUrls, setExistingGalleryUrls] = useState([]); // string[]
+  const [existingCoverPath, setExistingCoverPath] = useState(null);
+
+  // gallery objects: [{url, path}]
+  const [existingGallery, setExistingGallery] = useState([]);
 
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState("");
@@ -33,7 +42,7 @@ export default function AdminBlog({ onBack }) {
   const [postsLoading, setPostsLoading] = useState(false);
   const [editingId, setEditingId] = useState(null);
 
-  // upload progress msg (simple)
+  // upload progress msg
   const [uploadMsg, setUploadMsg] = useState("");
 
   async function refresh() {
@@ -48,7 +57,7 @@ export default function AdminBlog({ onBack }) {
 
   useEffect(() => {
     refresh();
-    // cleanup previews when component unmounts
+
     return () => {
       if (coverPreview) URL.revokeObjectURL(coverPreview);
       galleryPreviews.forEach((u) => URL.revokeObjectURL(u));
@@ -71,17 +80,20 @@ export default function AdminBlog({ onBack }) {
     setContent("");
     setPublished(false);
 
-    // reset local pending files
+    // pending previews
     if (coverPreview) URL.revokeObjectURL(coverPreview);
     galleryPreviews.forEach((u) => URL.revokeObjectURL(u));
+
     setCoverFile(null);
     setCoverPreview("");
+
     setGalleryFiles([]);
     setGalleryPreviews([]);
 
-    // reset existing urls
+    // existing
     setExistingCoverUrl("");
-    setExistingGalleryUrls([]);
+    setExistingCoverPath(null);
+    setExistingGallery([]);
 
     setSavedMsg("");
     setUploadMsg("");
@@ -97,11 +109,12 @@ export default function AdminBlog({ onBack }) {
     setSelectedTags(Array.isArray(p.tags) ? p.tags : []);
     setContent(p.content ?? "");
     setPublished(Boolean(p.published));
-    setExistingCoverUrl(p.coverUrl ?? "");
-    setExistingGalleryUrls(Array.isArray(p.gallery) ? p.gallery : []);
 
-    setSavedMsg("");
-    setUploadMsg("");
+    setExistingCoverUrl(p.coverUrl ?? "");
+    setExistingCoverPath(p.coverPath ?? null);
+
+    // normalized by blog.js to array of objects
+    setExistingGallery(Array.isArray(p.gallery) ? p.gallery : []);
   }
 
   function onPickCover(file) {
@@ -111,13 +124,97 @@ export default function AdminBlog({ onBack }) {
     setCoverPreview(URL.createObjectURL(file));
   }
 
+  // APPEND new gallery images (don’t replace)
   function onPickGallery(files) {
     const arr = Array.from(files || []);
-    // revoke old previews
-    galleryPreviews.forEach((u) => URL.revokeObjectURL(u));
+    if (arr.length === 0) return;
 
-    setGalleryFiles(arr);
-    setGalleryPreviews(arr.map((f) => URL.createObjectURL(f)));
+    setGalleryFiles((prev) => [...prev, ...arr]);
+    setGalleryPreviews((prev) => [
+      ...prev,
+      ...arr.map((f) => URL.createObjectURL(f)),
+    ]);
+  }
+
+  // remove a pending (not uploaded yet) gallery image
+  function removePendingGalleryAt(index) {
+    setGalleryFiles((prev) => prev.filter((_, i) => i !== index));
+    setGalleryPreviews((prev) => {
+      const toRemove = prev[index];
+      if (toRemove) URL.revokeObjectURL(toRemove);
+      return prev.filter((_, i) => i !== index);
+    });
+  }
+
+  async function deleteExistingCover() {
+    if (!editingId) return;
+    if (!existingCoverUrl && !existingCoverPath) return;
+
+    if (!confirm("Delete cover image? This will remove it from storage."))
+      return;
+
+    setSaving(true);
+    setUploadMsg("Deleting cover…");
+    try {
+      const path =
+        existingCoverPath || storagePathFromDownloadUrl(existingCoverUrl);
+
+      if (path) {
+        await deleteByPath(path);
+      }
+
+      await updateBlogPost(editingId, {
+        coverUrl: null,
+        coverPath: null,
+      });
+
+      setExistingCoverUrl("");
+      setExistingCoverPath(null);
+      setSavedMsg("Cover deleted.");
+      await refresh();
+    } catch (err) {
+      console.error(err);
+      alert(err?.message || "Failed to delete cover.");
+    } finally {
+      setUploadMsg("");
+      setSaving(false);
+    }
+  }
+
+  async function deleteExistingGalleryItem(itemIndex) {
+    if (!editingId) return;
+    const item = existingGallery[itemIndex];
+    if (!item?.url && !item?.path) return;
+
+    if (
+      !confirm("Delete this gallery image? This will remove it from storage.")
+    )
+      return;
+
+    setSaving(true);
+    setUploadMsg("Deleting gallery image…");
+    try {
+      const path = item.path || storagePathFromDownloadUrl(item.url);
+      if (path) {
+        await deleteByPath(path);
+      }
+
+      const nextGallery = existingGallery.filter((_, i) => i !== itemIndex);
+
+      await updateBlogPost(editingId, {
+        gallery: nextGallery,
+      });
+
+      setExistingGallery(nextGallery);
+      setSavedMsg("Gallery image deleted.");
+      await refresh();
+    } catch (err) {
+      console.error(err);
+      alert(err?.message || "Failed to delete gallery image.");
+    } finally {
+      setUploadMsg("");
+      setSaving(false);
+    }
   }
 
   async function handleSubmit(e) {
@@ -129,8 +226,7 @@ export default function AdminBlog({ onBack }) {
 
     setSaving(true);
     try {
-      // 1) Create/update the Firestore doc FIRST to get an id (for Storage paths)
-      //    If editing, we already have editingId
+      // 1) Create/update base fields first to get id
       const basePayload = {
         title: title.trim(),
         description: desc.trim(),
@@ -146,48 +242,81 @@ export default function AdminBlog({ onBack }) {
         postId = await createBlogPost({
           ...basePayload,
           coverUrl: null,
+          coverPath: null,
           gallery: [],
         });
       } else {
-        // update text fields first
         await updateBlogPost(postId, basePayload);
       }
 
-      // 2) Upload cover if selected
+      // 2) COVER handling:
+      // If user selected a new cover, delete old cover (if any) BEFORE uploading new
       let finalCoverUrl = existingCoverUrl || null;
+      let finalCoverPath = existingCoverPath || null;
 
       if (coverFile) {
+        setUploadMsg("Compressing cover…");
+        const blob = await compressImageFile(coverFile, {
+          maxWidth: 2200,
+          maxHeight: 2200,
+          quality: 0.84,
+          mimeType: "image/webp",
+        });
+
+        // delete old cover if it exists
+        const oldPath =
+          existingCoverPath || storagePathFromDownloadUrl(existingCoverUrl);
+        if (oldPath) {
+          setUploadMsg("Deleting old cover…");
+          await deleteByPath(oldPath);
+        }
+
         setUploadMsg("Uploading cover…");
-        const name = safeName(coverFile.name);
-        finalCoverUrl = await uploadFileAndGetUrl(
-          coverFile,
-          `blog/${postId}/cover/${Date.now()}-${name}`,
+        const name = safeName(coverFile.name).replace(
+          /\.(png|jpg|jpeg|webp|gif)$/i,
+          "",
         );
+        const path = `blog/${postId}/cover/${Date.now()}-${name}.webp`;
+
+        const uploaded = await uploadBlobAndGetUrl(blob, path, "image/webp");
+        finalCoverUrl = uploaded.url;
+        finalCoverPath = uploaded.path;
       }
 
-      // 3) Upload gallery if selected (append)
-      let finalGallery = Array.isArray(existingGalleryUrls)
-        ? [...existingGalleryUrls]
+      // 3) GALLERY handling:
+      // We APPEND new uploads to existing gallery
+      let finalGallery = Array.isArray(existingGallery)
+        ? [...existingGallery]
         : [];
 
       if (galleryFiles.length > 0) {
         setUploadMsg(`Uploading gallery (${galleryFiles.length})…`);
-        const uploaded = [];
         for (const f of galleryFiles) {
-          const name = safeName(f.name);
-          const url = await uploadFileAndGetUrl(
-            f,
-            `blog/${postId}/gallery/${Date.now()}-${name}`,
+          setUploadMsg(`Compressing ${f.name}…`);
+          const blob = await compressImageFile(f, {
+            maxWidth: 2200,
+            maxHeight: 2200,
+            quality: 0.82,
+            mimeType: "image/webp",
+          });
+
+          const base = safeName(f.name).replace(
+            /\.(png|jpg|jpeg|webp|gif)$/i,
+            "",
           );
-          uploaded.push(url);
+          const path = `blog/${postId}/gallery/${Date.now()}-${base}.webp`;
+
+          setUploadMsg(`Uploading ${f.name}…`);
+          const uploaded = await uploadBlobAndGetUrl(blob, path, "image/webp");
+          finalGallery.push({ url: uploaded.url, path: uploaded.path });
         }
-        finalGallery = [...finalGallery, ...uploaded];
       }
 
-      // 4) Save image urls back into Firestore
+      // 4) Save image fields
       setUploadMsg("Saving post…");
       await updateBlogPost(postId, {
         coverUrl: finalCoverUrl,
+        coverPath: finalCoverPath,
         gallery: finalGallery,
       });
 
@@ -204,12 +333,11 @@ export default function AdminBlog({ onBack }) {
     }
   }
 
-  // A small derived “what cover should we show”
   const effectiveCoverPreview = coverPreview || existingCoverUrl || "";
 
   return (
     <div className="space-y-6">
-      {/* header row */}
+      {/* header */}
       <div className="flex items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-semibold">Blog</h2>
@@ -282,6 +410,7 @@ export default function AdminBlog({ onBack }) {
               onChange={(e) => setDate(e.target.value)}
             />
           </div>
+
           <label className="flex items-center gap-2 text-sm text-gray-700">
             <input
               type="checkbox"
@@ -290,17 +419,37 @@ export default function AdminBlog({ onBack }) {
             />
             published
           </label>
-          {/* cover upload */}
-          <div className="space-y-1">
-            <label className="text-sm text-gray-700">Cover image</label>
+
+          {/* cover */}
+          <div className="space-y-1 sm:col-span-2">
+            <div className="flex items-center justify-between">
+              <label className="text-sm text-gray-700">Cover image</label>
+
+              {editingId && (existingCoverUrl || existingCoverPath) ? (
+                <button
+                  type="button"
+                  onClick={deleteExistingCover}
+                  className="text-xs border rounded px-2 py-1 hover:bg-gray-50"
+                >
+                  Delete cover
+                </button>
+              ) : null}
+            </div>
+
             <input
               className="w-full text-sm"
               type="file"
               accept="image/*"
               onChange={(e) => onPickCover(e.target.files?.[0])}
             />
+
+            <div className="text-xs text-gray-600">
+              Picking a new file will replace the old cover (and delete the old
+              file).
+            </div>
           </div>
 
+          {/* tags */}
           <div className="space-y-2 sm:col-span-2">
             <div className="text-sm text-gray-700">Tags</div>
             <div className="flex flex-wrap gap-2">
@@ -331,15 +480,10 @@ export default function AdminBlog({ onBack }) {
                 alt="cover preview"
                 className="w-full max-h-64 object-cover rounded-md border"
               />
-              {existingCoverUrl && !coverFile ? (
-                <div className="mt-2 text-xs text-gray-600">
-                  Using existing cover. Pick a file above to replace it.
-                </div>
-              ) : null}
             </div>
           ) : null}
 
-          {/* gallery upload */}
+          {/* gallery */}
           <div className="space-y-1 sm:col-span-2">
             <label className="text-sm text-gray-700">Gallery images</label>
             <input
@@ -350,43 +494,61 @@ export default function AdminBlog({ onBack }) {
               onChange={(e) => onPickGallery(e.target.files)}
             />
             <div className="text-xs text-gray-600">
-              Selecting gallery images will upload & append them to existing
-              ones.
+              Gallery uploads are appended. Remove any image with the × button.
             </div>
           </div>
 
           {/* gallery previews */}
-          {galleryPreviews.length > 0 || existingGalleryUrls.length > 0 ? (
+          {existingGallery.length > 0 || galleryPreviews.length > 0 ? (
             <div className="sm:col-span-2 space-y-2">
-              <div className="text-xs text-gray-600">
-                Gallery preview{" "}
-                {existingGalleryUrls.length > 0 && galleryPreviews.length === 0
-                  ? "(existing)"
-                  : "(pending + existing)"}
-              </div>
+              <div className="text-xs text-gray-600">Gallery</div>
 
               <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                {existingGalleryUrls.map((u, i) => (
-                  <img
-                    key={`existing-${i}`}
-                    src={u}
-                    alt="existing gallery"
-                    className="aspect-square object-cover rounded border"
-                  />
+                {/* existing */}
+                {existingGallery.map((item, i) => (
+                  <div key={`existing-${i}`} className="relative">
+                    <img
+                      src={item.url}
+                      alt="existing gallery"
+                      className="aspect-square object-cover rounded border"
+                    />
+                    {editingId ? (
+                      <button
+                        type="button"
+                        onClick={() => deleteExistingGalleryItem(i)}
+                        className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-black text-white text-xs flex items-center justify-center"
+                        title="Delete"
+                      >
+                        ×
+                      </button>
+                    ) : null}
+                  </div>
                 ))}
+
+                {/* pending */}
                 {galleryPreviews.map((u, i) => (
-                  <img
-                    key={`new-${i}`}
-                    src={u}
-                    alt="new gallery"
-                    className="aspect-square object-cover rounded border"
-                  />
+                  <div key={`new-${i}`} className="relative">
+                    <img
+                      src={u}
+                      alt="new gallery"
+                      className="aspect-square object-cover rounded border"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removePendingGalleryAt(i)}
+                      className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-black text-white text-xs flex items-center justify-center"
+                      title="Remove"
+                    >
+                      ×
+                    </button>
+                  </div>
                 ))}
               </div>
             </div>
           ) : null}
         </div>
 
+        {/* content */}
         <div className="space-y-1">
           <label className="text-sm text-gray-700">Rich text</label>
           <ReactQuill
@@ -438,7 +600,7 @@ export default function AdminBlog({ onBack }) {
                   <button
                     type="button"
                     onClick={() => loadIntoForm(p)}
-                    className={`w-full text-left px-3 py-2 flex items-center justify-between hover:cursor-pointer hover:bg-gray-50 ${
+                    className={`w-full text-left px-3 py-2 flex items-center justify-between hover:bg-gray-50 ${
                       editingId === p.id ? "bg-gray-50" : ""
                     }`}
                   >
