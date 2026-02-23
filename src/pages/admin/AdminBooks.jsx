@@ -2,19 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createBook, listBooks, updateBook } from "../../lib/books";
 import ReactQuill from "react-quill-new";
 import "react-quill-new/dist/quill.snow.css";
-
-const TAGS = [
-  "magical realism",
-  "dystopia",
-  "science fiction",
-  "classic",
-  "italian literature",
-  "latin america",
-  "philosophy",
-  "history",
-  "steampunk",
-  "fantasy",
-];
+import { BOOK_TAGS } from "../../constants/tags";
 
 export default function AdminBooks({ onBack }) {
   // book form
@@ -259,7 +247,7 @@ export default function AdminBooks({ onBack }) {
         <div className="space-y-2">
           <div className="text-sm text-gray-700">Tags</div>
           <div className="flex flex-wrap gap-2">
-            {TAGS.map((t) => {
+            {BOOK_TAGS.map((t) => {
               const active = selectedTags.includes(t);
               return (
                 <button

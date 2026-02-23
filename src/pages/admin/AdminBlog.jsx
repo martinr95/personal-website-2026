@@ -2,18 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import ReactQuill from "react-quill-new";
 import "react-quill-new/dist/quill.snow.css";
 import { createBlogPost, listBlogPosts, updateBlogPost } from "../../lib/blog";
-
-const BLOG_TAGS = [
-  "travel",
-  "vienna",
-  "dolomites",
-  "thoughts",
-  "books",
-  "law",
-  "coding",
-  "life",
-  "food",
-];
+import { uploadFileAndGetUrl, safeName } from "../../lib/storageUploads";
+import { BLOG_TAGS } from "../../constants/tags";
 
 export default function AdminBlog({ onBack }) {
   // form
@@ -21,18 +11,19 @@ export default function AdminBlog({ onBack }) {
   const [desc, setDesc] = useState("");
   const [date, setDate] = useState(""); // YYYY-MM-DD
   const [content, setContent] = useState(""); // richtext HTML
-
   const [selectedTags, setSelectedTags] = useState([]);
+  const [published, setPublished] = useState(false);
 
-  const [coverUrl, setCoverUrl] = useState("");
-  const [galleryInput, setGalleryInput] = useState(""); // textarea of URLs
-  const galleryUrls = useMemo(() => {
-    // each line = one url
-    return galleryInput
-      .split("\n")
-      .map((s) => s.trim())
-      .filter(Boolean);
-  }, [galleryInput]);
+  // images (new)
+  const [coverFile, setCoverFile] = useState(null);
+  const [coverPreview, setCoverPreview] = useState("");
+
+  const [galleryFiles, setGalleryFiles] = useState([]); // File[]
+  const [galleryPreviews, setGalleryPreviews] = useState([]); // string[]
+
+  // existing saved urls (when editing)
+  const [existingCoverUrl, setExistingCoverUrl] = useState("");
+  const [existingGalleryUrls, setExistingGalleryUrls] = useState([]); // string[]
 
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState("");
@@ -41,6 +32,9 @@ export default function AdminBlog({ onBack }) {
   const [posts, setPosts] = useState([]);
   const [postsLoading, setPostsLoading] = useState(false);
   const [editingId, setEditingId] = useState(null);
+
+  // upload progress msg (simple)
+  const [uploadMsg, setUploadMsg] = useState("");
 
   async function refresh() {
     setPostsLoading(true);
@@ -54,6 +48,11 @@ export default function AdminBlog({ onBack }) {
 
   useEffect(() => {
     refresh();
+    // cleanup previews when component unmounts
+    return () => {
+      if (coverPreview) URL.revokeObjectURL(coverPreview);
+      galleryPreviews.forEach((u) => URL.revokeObjectURL(u));
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -69,55 +68,144 @@ export default function AdminBlog({ onBack }) {
     setDesc("");
     setDate("");
     setSelectedTags([]);
-    setCoverUrl("");
-    setGalleryInput("");
     setContent("");
+    setPublished(false);
+
+    // reset local pending files
+    if (coverPreview) URL.revokeObjectURL(coverPreview);
+    galleryPreviews.forEach((u) => URL.revokeObjectURL(u));
+    setCoverFile(null);
+    setCoverPreview("");
+    setGalleryFiles([]);
+    setGalleryPreviews([]);
+
+    // reset existing urls
+    setExistingCoverUrl("");
+    setExistingGalleryUrls([]);
+
     setSavedMsg("");
+    setUploadMsg("");
   }
 
   function loadIntoForm(p) {
+    resetForm();
     setEditingId(p.id);
+
     setTitle(p.title ?? "");
     setDesc(p.description ?? "");
     setDate(typeof p.date === "string" ? p.date : "");
     setSelectedTags(Array.isArray(p.tags) ? p.tags : []);
-    setCoverUrl(p.coverUrl ?? "");
-    setGalleryInput(Array.isArray(p.gallery) ? p.gallery.join("\n") : "");
     setContent(p.content ?? "");
+    setPublished(Boolean(p.published));
+    setExistingCoverUrl(p.coverUrl ?? "");
+    setExistingGalleryUrls(Array.isArray(p.gallery) ? p.gallery : []);
+
     setSavedMsg("");
+    setUploadMsg("");
+  }
+
+  function onPickCover(file) {
+    if (!file) return;
+    if (coverPreview) URL.revokeObjectURL(coverPreview);
+    setCoverFile(file);
+    setCoverPreview(URL.createObjectURL(file));
+  }
+
+  function onPickGallery(files) {
+    const arr = Array.from(files || []);
+    // revoke old previews
+    galleryPreviews.forEach((u) => URL.revokeObjectURL(u));
+
+    setGalleryFiles(arr);
+    setGalleryPreviews(arr.map((f) => URL.createObjectURL(f)));
   }
 
   async function handleSubmit(e) {
     e.preventDefault();
     setSavedMsg("");
+    setUploadMsg("");
 
     if (!title.trim()) return;
 
-    const payload = {
-      title: title.trim(),
-      description: desc.trim(),
-      date: date ? date : null, // YYYY-MM-DD or null
-      tags: selectedTags,
-      coverUrl: coverUrl.trim() || null,
-      gallery: galleryUrls, // array of urls
-      content, // richtext HTML
-    };
-
     setSaving(true);
     try {
-      if (editingId) {
-        await updateBlogPost(editingId, payload);
-        setSavedMsg("Updated.");
+      // 1) Create/update the Firestore doc FIRST to get an id (for Storage paths)
+      //    If editing, we already have editingId
+      const basePayload = {
+        title: title.trim(),
+        description: desc.trim(),
+        date: date ? date : null,
+        tags: selectedTags,
+        content,
+        published,
+      };
+
+      let postId = editingId;
+
+      if (!postId) {
+        postId = await createBlogPost({
+          ...basePayload,
+          coverUrl: null,
+          gallery: [],
+        });
       } else {
-        await createBlogPost(payload);
-        setSavedMsg("Saved.");
+        // update text fields first
+        await updateBlogPost(postId, basePayload);
       }
+
+      // 2) Upload cover if selected
+      let finalCoverUrl = existingCoverUrl || null;
+
+      if (coverFile) {
+        setUploadMsg("Uploading cover…");
+        const name = safeName(coverFile.name);
+        finalCoverUrl = await uploadFileAndGetUrl(
+          coverFile,
+          `blog/${postId}/cover/${Date.now()}-${name}`,
+        );
+      }
+
+      // 3) Upload gallery if selected (append)
+      let finalGallery = Array.isArray(existingGalleryUrls)
+        ? [...existingGalleryUrls]
+        : [];
+
+      if (galleryFiles.length > 0) {
+        setUploadMsg(`Uploading gallery (${galleryFiles.length})…`);
+        const uploaded = [];
+        for (const f of galleryFiles) {
+          const name = safeName(f.name);
+          const url = await uploadFileAndGetUrl(
+            f,
+            `blog/${postId}/gallery/${Date.now()}-${name}`,
+          );
+          uploaded.push(url);
+        }
+        finalGallery = [...finalGallery, ...uploaded];
+      }
+
+      // 4) Save image urls back into Firestore
+      setUploadMsg("Saving post…");
+      await updateBlogPost(postId, {
+        coverUrl: finalCoverUrl,
+        gallery: finalGallery,
+      });
+
+      setSavedMsg(editingId ? "Updated." : "Saved.");
+      setUploadMsg("");
       resetForm();
       refresh();
+    } catch (err) {
+      setUploadMsg("");
+      console.error(err);
+      alert(err?.message || "Something went wrong.");
     } finally {
       setSaving(false);
     }
   }
+
+  // A small derived “what cover should we show”
+  const effectiveCoverPreview = coverPreview || existingCoverUrl || "";
 
   return (
     <div className="space-y-6">
@@ -126,8 +214,7 @@ export default function AdminBlog({ onBack }) {
         <div>
           <h2 className="text-xl font-semibold">Blog</h2>
           <p className="text-sm text-gray-700">
-            Create & edit blog entries (title + description + richtext +
-            images).
+            Create & edit blog entries (richtext + cover + gallery).
           </p>
         </div>
 
@@ -195,14 +282,22 @@ export default function AdminBlog({ onBack }) {
               onChange={(e) => setDate(e.target.value)}
             />
           </div>
-
-          <div className="space-y-1">
-            <label className="text-sm text-gray-700">Cover image URL</label>
+          <label className="flex items-center gap-2 text-sm text-gray-700">
             <input
-              className="w-full border rounded-md px-3 py-2"
-              value={coverUrl}
-              onChange={(e) => setCoverUrl(e.target.value)}
-              placeholder="https://…"
+              type="checkbox"
+              checked={published}
+              onChange={(e) => setPublished(e.target.checked)}
+            />
+            published
+          </label>
+          {/* cover upload */}
+          <div className="space-y-1">
+            <label className="text-sm text-gray-700">Cover image</label>
+            <input
+              className="w-full text-sm"
+              type="file"
+              accept="image/*"
+              onChange={(e) => onPickCover(e.target.files?.[0])}
             />
           </div>
 
@@ -227,24 +322,69 @@ export default function AdminBlog({ onBack }) {
             </div>
           </div>
 
+          {/* cover preview */}
+          {effectiveCoverPreview ? (
+            <div className="sm:col-span-2">
+              <div className="text-xs text-gray-600 mb-2">Cover preview</div>
+              <img
+                src={effectiveCoverPreview}
+                alt="cover preview"
+                className="w-full max-h-64 object-cover rounded-md border"
+              />
+              {existingCoverUrl && !coverFile ? (
+                <div className="mt-2 text-xs text-gray-600">
+                  Using existing cover. Pick a file above to replace it.
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {/* gallery upload */}
           <div className="space-y-1 sm:col-span-2">
-            <label className="text-sm text-gray-700">
-              Gallery image URLs (one per line)
-            </label>
-            <textarea
-              className="w-full border rounded-md px-3 py-2"
-              rows={3}
-              value={galleryInput}
-              onChange={(e) => setGalleryInput(e.target.value)}
-              placeholder={"https://...\nhttps://...\nhttps://..."}
+            <label className="text-sm text-gray-700">Gallery images</label>
+            <input
+              className="w-full text-sm"
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={(e) => onPickGallery(e.target.files)}
             />
-            {galleryUrls.length > 0 ? (
-              <div className="text-xs text-gray-600">
-                {galleryUrls.length} image{galleryUrls.length === 1 ? "" : "s"}{" "}
-                in gallery
-              </div>
-            ) : null}
+            <div className="text-xs text-gray-600">
+              Selecting gallery images will upload & append them to existing
+              ones.
+            </div>
           </div>
+
+          {/* gallery previews */}
+          {galleryPreviews.length > 0 || existingGalleryUrls.length > 0 ? (
+            <div className="sm:col-span-2 space-y-2">
+              <div className="text-xs text-gray-600">
+                Gallery preview{" "}
+                {existingGalleryUrls.length > 0 && galleryPreviews.length === 0
+                  ? "(existing)"
+                  : "(pending + existing)"}
+              </div>
+
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                {existingGalleryUrls.map((u, i) => (
+                  <img
+                    key={`existing-${i}`}
+                    src={u}
+                    alt="existing gallery"
+                    className="aspect-square object-cover rounded border"
+                  />
+                ))}
+                {galleryPreviews.map((u, i) => (
+                  <img
+                    key={`new-${i}`}
+                    src={u}
+                    alt="new gallery"
+                    className="aspect-square object-cover rounded border"
+                  />
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
 
         <div className="space-y-1">
@@ -257,6 +397,9 @@ export default function AdminBlog({ onBack }) {
           />
         </div>
 
+        {uploadMsg ? (
+          <div className="text-sm text-gray-700">{uploadMsg}</div>
+        ) : null}
         {savedMsg ? (
           <div className="text-sm text-gray-700">{savedMsg}</div>
         ) : null}
@@ -295,7 +438,7 @@ export default function AdminBlog({ onBack }) {
                   <button
                     type="button"
                     onClick={() => loadIntoForm(p)}
-                    className={`w-full text-left px-3 py-2 flex items-center justify-between hover:bg-gray-50 ${
+                    className={`w-full text-left px-3 py-2 flex items-center justify-between hover:cursor-pointer hover:bg-gray-50 ${
                       editingId === p.id ? "bg-gray-50" : ""
                     }`}
                   >
@@ -308,7 +451,18 @@ export default function AdminBlog({ onBack }) {
                         {p.date ?? "no date"}
                       </span>
                     </div>
-                    <span className="text-gray-500">✎</span>
+                    <div>
+                      {p.published ? (
+                        <span className="text-xs border rounded px-2 py-1 mr-2">
+                          published
+                        </span>
+                      ) : (
+                        <span className="text-xs border rounded px-2 py-1 text-gray-500 mr-2">
+                          draft
+                        </span>
+                      )}
+                      <span className="text-gray-500">✎</span>
+                    </div>
                   </button>
                 </li>
               ))}

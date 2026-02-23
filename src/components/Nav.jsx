@@ -14,6 +14,9 @@ export default function Nav() {
           <NavLink to="/" className={linkClass}>
             Home
           </NavLink>
+          <NavLink to="/blog" className={linkClass}>
+            Blog
+          </NavLink>
           <NavLink to="/books" className={linkClass}>
             Books
           </NavLink>
