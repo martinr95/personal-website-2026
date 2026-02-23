@@ -43,13 +43,16 @@ export default function Books() {
 
               {(b.favorites || b.suggested) && (
                 <div className="mt-2 flex gap-2 text-xs">
-                     {b.suggested ? (
-                    <span className="rounded px-2 py-1 bg-amber-200">suggested</span>
+                  {b.suggested ? (
+                    <span className="rounded px-2 py-1 bg-amber-200">
+                      suggested
+                    </span>
                   ) : null}
                   {b.favorites ? (
-                    <span className="rounded px-2 py-1 bg-indigo-200 font-bold">favorite</span>
+                    <span className="rounded px-2 py-1 bg-indigo-200 font-bold">
+                      favorite
+                    </span>
                   ) : null}
-                 
                 </div>
               )}
 
@@ -72,7 +75,12 @@ export default function Books() {
                 </div>
               ) : null}
 
-              {b.notes ? <p className="mt-2 text-gray-800">{b.notes}</p> : null}
+              {b.notes ? (
+                <div
+                  className="mt-2 prose prose-sm max-w-none break-words overflow-hidden prose-img:max-w-full prose-img:h-auto"
+                  dangerouslySetInnerHTML={{ __html: b.notes }}
+                />
+              ) : null}
             </article>
           ))
         )}
