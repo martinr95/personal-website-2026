@@ -65,6 +65,7 @@ export default function Admin() {
           <div className="text-gray-700 text-sm">
             Logged in as <span className="font-medium">{user.email}</span>
           </div>
+          <div className="text-gray-700 text-sm">v.0.1.0-alpha</div>
 
           {/* Tool router */}
           {mode === "books" ? (

@@ -16,6 +16,17 @@ export default function Books() {
     refresh();
   }, []);
 
+  function getRatingColor(rating) {
+    if (typeof rating !== "number") return "text-gray-600";
+    if (rating <= 5) return "text-red-600 font-medium";
+    if (rating > 8.5) return "text-indigo-800 font-bold";
+    return "text-gray-900 font-medium"; // default black-ish
+  }
+
+  function getCardBg(isFavorite) {
+    return isFavorite ? "bg-indigo-200" : "border bg-white";
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -30,11 +41,14 @@ export default function Books() {
           <div className="text-gray-700">No books yet.</div>
         ) : (
           books.map((b) => (
-            <article key={b.id} className="border rounded-lg p-4">
+            <article
+              key={b.id}
+              className={`rounded-lg p-4 ${getCardBg(b.favorites)}`}
+            >
               <div className="flex items-baseline justify-between gap-4">
                 <h2 className="font-semibold">{b.title}</h2>
 
-                <div className="text-sm text-gray-600">
+                <div className={`text-sm ${getRatingColor(b.rating)}`}>
                   {typeof b.rating === "number" ? `${b.rating}/10` : ""}
                 </div>
               </div>
@@ -49,7 +63,7 @@ export default function Books() {
                     </span>
                   ) : null}
                   {b.favorites ? (
-                    <span className="rounded px-2 py-1 bg-indigo-200 font-bold">
+                    <span className="rounded px-2 py-1 bg-indigo-400 font-bold">
                       favorite
                     </span>
                   ) : null}
@@ -69,18 +83,38 @@ export default function Books() {
                 </div>
               )}
 
-              {b.prize ? (
-                <div className="mt-2 text-sm text-gray-800">
-                  <span className="font-medium">{b.prize}</span>
-                </div>
-              ) : null}
-
               {b.notes ? (
                 <div
                   className="mt-2 prose prose-sm max-w-none break-words overflow-hidden prose-img:max-w-full prose-img:h-auto"
                   dangerouslySetInnerHTML={{ __html: b.notes }}
                 />
               ) : null}
+
+              {b.prize ? (
+                <div className="mt-3 flex items-center gap-3">
+                  <div className="flex items-center justify-center w-8 h-8 border border-black text-black text-xs font-semibold">
+                    ✦
+                  </div>
+                  <div className="text-sm font-medium text-gray-900">
+                    {b.prize}
+                  </div>
+                </div>
+              ) : null}
+
+              {/*   {b.prize ? (
+                <div className="mt-3">
+                  <div className="relative border border-gray-300 bg-gray-50 px-4 py-2">
+                    <div className="absolute left-0 top-0 h-full w-1 bg-black" />
+                    <div className="text-xs tracking-wide text-gray-500 uppercase">
+                      Personal Award
+                    </div>
+                    <div className="text-sm font-medium text-gray-900">
+                      {b.prize}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+              */}
             </article>
           ))
         )}

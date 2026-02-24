@@ -19,6 +19,7 @@ export default function AdminBlog({ onBack }) {
   const [content, setContent] = useState(""); // richtext HTML
   const [selectedTags, setSelectedTags] = useState([]);
   const [published, setPublished] = useState(false);
+  const [location, setLocation] = useState("");
 
   // images (pending)
   const [coverFile, setCoverFile] = useState(null);
@@ -41,6 +42,19 @@ export default function AdminBlog({ onBack }) {
   const [posts, setPosts] = useState([]);
   const [postsLoading, setPostsLoading] = useState(false);
   const [editingId, setEditingId] = useState(null);
+
+  const locationSuggestions = useMemo(() => {
+    const map = new Map(); // key: lowercase, value: original
+    for (const p of posts) {
+      const raw = typeof p.location === "string" ? p.location.trim() : "";
+      if (!raw) continue;
+
+      const key = raw.toLowerCase();
+      if (!map.has(key)) map.set(key, raw);
+    }
+
+    return Array.from(map.values()).sort((a, b) => a.localeCompare(b));
+  }, [posts]);
 
   // upload progress msg
   const [uploadMsg, setUploadMsg] = useState("");
@@ -79,6 +93,7 @@ export default function AdminBlog({ onBack }) {
     setSelectedTags([]);
     setContent("");
     setPublished(false);
+    setLocation("");
 
     // pending previews
     if (coverPreview) URL.revokeObjectURL(coverPreview);
@@ -109,6 +124,7 @@ export default function AdminBlog({ onBack }) {
     setSelectedTags(Array.isArray(p.tags) ? p.tags : []);
     setContent(p.content ?? "");
     setPublished(Boolean(p.published));
+    setLocation(p.location ?? "");
 
     setExistingCoverUrl(p.coverUrl ?? "");
     setExistingCoverPath(p.coverPath ?? null);
@@ -231,6 +247,7 @@ export default function AdminBlog({ onBack }) {
         title: title.trim(),
         description: desc.trim(),
         date: date ? date : null,
+        location: location.trim() || null,
         tags: selectedTags,
         content,
         published,
@@ -419,6 +436,26 @@ export default function AdminBlog({ onBack }) {
             />
             published
           </label>
+          <div className="space-y-1">
+            <label className="text-sm text-gray-700">Location</label>
+            <input
+              className="w-full border rounded-md px-3 py-2"
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              placeholder="e.g. Vienna, Tokyo, Val Gardena…"
+              list="blog-location-suggestions"
+            />
+            <datalist id="blog-location-suggestions">
+              {locationSuggestions.map((loc) => (
+                <option key={loc} value={loc} />
+              ))}
+            </datalist>
+            {locationSuggestions.length > 0 ? (
+              <div className="text-xs text-gray-600">
+                Suggestions from your existing posts.
+              </div>
+            ) : null}
+          </div>
 
           {/* cover */}
           <div className="space-y-1 sm:col-span-2">

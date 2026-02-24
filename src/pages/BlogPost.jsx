@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { getBlogPost } from "../lib/blog";
 
@@ -23,6 +23,21 @@ export default function BlogPost() {
       active = false;
     };
   }, [id]);
+
+  // supports:
+  // - old gallery: ["url", ...]
+  // - new gallery: [{ url, path }, ...]
+  const galleryUrls = useMemo(() => {
+    if (!post || !Array.isArray(post.gallery)) return [];
+    return post.gallery
+      .map((g) => {
+        if (typeof g === "string") return g; // old format
+        if (g && typeof g === "object" && typeof g.url === "string")
+          return g.url; // new format
+        return null;
+      })
+      .filter(Boolean);
+  }, [post]);
 
   if (loading) {
     return <div className="text-gray-700">Loading…</div>;
@@ -82,22 +97,20 @@ export default function BlogPost() {
         />
       ) : null}
 
-      {/* rich text */}
       {post.content ? (
         <div
-          className="prose prose-sm max-w-none"
+          className="prose prose-sm max-w-none break-words overflow-hidden prose-img:max-w-full prose-img:h-auto"
           dangerouslySetInnerHTML={{ __html: post.content }}
         />
       ) : (
         <div className="text-gray-400 italic">No content.</div>
       )}
 
-      {/* gallery */}
-      {Array.isArray(post.gallery) && post.gallery.length > 0 ? (
+      {galleryUrls.length > 0 ? (
         <section className="space-y-2">
           <div className="text-sm text-gray-700">Gallery</div>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-            {post.gallery.map((url, idx) => (
+            {galleryUrls.map((url, idx) => (
               <a
                 key={url + idx}
                 href={url}
