@@ -1,15 +1,15 @@
 import { useEffect, useState } from "react";
-import { listPublishedBlogPosts } from "../lib/blog";
+import { listPublishedSocialPosts } from "../lib/blog";
 import PostCard from "../components/PostCard";
 
-export default function Blog() {
+export default function Social() {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
 
   async function refresh() {
     setLoading(true);
     try {
-      const data = await listPublishedBlogPosts();
+      const data = await listPublishedSocialPosts();
       setPosts(data);
     } catch (e) {
       console.error(e);
@@ -26,16 +26,16 @@ export default function Blog() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Blog</h1>
+        <h1 className="text-2xl font-semibold">Social</h1>
         <p className="text-gray-700">
-          Random notes, travel, books, coding — whatever sticks.
+          Shorter posts, quick updates, small thoughts — the “personal feed”.
         </p>
       </div>
 
       {loading ? (
         <div className="text-gray-700">Loading…</div>
       ) : posts.length === 0 ? (
-        <div className="text-gray-700">No blog posts yet.</div>
+        <div className="text-gray-700">No social posts yet.</div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
           {posts.map((p) => (

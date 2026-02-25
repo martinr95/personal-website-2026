@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import ReactQuill from "react-quill-new";
 import "react-quill-new/dist/quill.snow.css";
-import { createBlogPost, listBlogPosts, updateBlogPost } from "../../lib/blog";
+import {
+  createBlogPost,
+  deleteBlogPost,
+  listBlogPosts,
+  updateBlogPost,
+} from "../../lib/blog";
 import {
   compressImageFile,
   deleteByPath,
@@ -10,6 +15,8 @@ import {
   uploadBlobAndGetUrl,
 } from "../../lib/storageUploads";
 import { BLOG_TAGS } from "../../constants/tags";
+import { listSeries } from "../../lib/series";
+import { slugify } from "../../lib/slug";
 
 export default function AdminBlog({ onBack }) {
   // form
@@ -43,6 +50,11 @@ export default function AdminBlog({ onBack }) {
   const [postsLoading, setPostsLoading] = useState(false);
   const [editingId, setEditingId] = useState(null);
 
+  const [seriesId, setSeriesId] = useState("");
+  const [seriesList, setSeriesList] = useState([]);
+
+  const [postType, setPostType] = useState("blog"); // "blog" | "social"
+
   const locationSuggestions = useMemo(() => {
     const map = new Map(); // key: lowercase, value: original
     for (const p of posts) {
@@ -62,8 +74,12 @@ export default function AdminBlog({ onBack }) {
   async function refresh() {
     setPostsLoading(true);
     try {
-      const data = await listBlogPosts();
-      setPosts(data);
+      const [postData, seriesData] = await Promise.all([
+        listBlogPosts(),
+        listSeries(),
+      ]);
+      setPosts(postData);
+      setSeriesList(seriesData);
     } finally {
       setPostsLoading(false);
     }
@@ -94,6 +110,8 @@ export default function AdminBlog({ onBack }) {
     setContent("");
     setPublished(false);
     setLocation("");
+    setSeriesId("");
+    setPostType("blog");
 
     // pending previews
     if (coverPreview) URL.revokeObjectURL(coverPreview);
@@ -125,9 +143,11 @@ export default function AdminBlog({ onBack }) {
     setContent(p.content ?? "");
     setPublished(Boolean(p.published));
     setLocation(p.location ?? "");
+    setPostType(p.postType === "social" ? "social" : "blog");
 
     setExistingCoverUrl(p.coverUrl ?? "");
     setExistingCoverPath(p.coverPath ?? null);
+    setSeriesId(typeof p.seriesId === "string" ? p.seriesId : "");
 
     // normalized by blog.js to array of objects
     setExistingGallery(Array.isArray(p.gallery) ? p.gallery : []);
@@ -242,15 +262,31 @@ export default function AdminBlog({ onBack }) {
 
     setSaving(true);
     try {
+      const selectedSeries =
+        seriesId && seriesList.length
+          ? seriesList.find((s) => s.id === seriesId) || null
+          : null;
+
+      const finalSeriesId = selectedSeries ? selectedSeries.id : null;
+      const finalSeriesName = selectedSeries ? selectedSeries.name : null;
+      const finalSeriesSlug = selectedSeries
+        ? selectedSeries.slug || slugify(selectedSeries.name)
+        : null;
       // 1) Create/update base fields first to get id
       const basePayload = {
         title: title.trim(),
-        description: desc.trim(),
+        description: desc.trim() || null,
         date: date ? date : null,
         location: location.trim() || null,
         tags: selectedTags,
         content,
         published,
+        postType,
+
+        // ✅ series link
+        seriesId: finalSeriesId,
+        seriesName: finalSeriesName,
+        seriesSlug: finalSeriesSlug,
       };
 
       let postId = editingId;
@@ -350,6 +386,31 @@ export default function AdminBlog({ onBack }) {
     }
   }
 
+  async function handleDeletePost() {
+    if (!editingId) return;
+
+    const ok = confirm(
+      "Delete this post? This will permanently delete the Firestore document AND all associated images from Firebase Storage.",
+    );
+    if (!ok) return;
+
+    setSaving(true);
+    setUploadMsg("Deleting post + images…");
+    try {
+      await deleteBlogPost(editingId);
+      setUploadMsg("");
+      setSavedMsg("Post deleted.");
+      resetForm();
+      await refresh();
+    } catch (err) {
+      console.error(err);
+      alert(err?.message || "Failed to delete post.");
+    } finally {
+      setUploadMsg("");
+      setSaving(false);
+    }
+  }
+
   const effectiveCoverPreview = coverPreview || existingCoverUrl || "";
 
   return (
@@ -387,13 +448,25 @@ export default function AdminBlog({ onBack }) {
           </div>
 
           {editingId ? (
-            <button
-              type="button"
-              onClick={resetForm}
-              className="text-xs border rounded px-2 py-1 hover:bg-gray-50"
-            >
-              Cancel editing
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={resetForm}
+                className="text-xs border rounded px-2 py-1 hover:bg-gray-50"
+              >
+                Cancel editing
+              </button>
+
+              <button
+                type="button"
+                onClick={handleDeletePost}
+                disabled={saving}
+                className="text-xs border rounded px-2 py-1 hover:bg-gray-50 text-red-600 disabled:opacity-60"
+                title="Deletes the post and all images from storage"
+              >
+                Delete post
+              </button>
+            </div>
           ) : null}
         </div>
 
@@ -455,6 +528,42 @@ export default function AdminBlog({ onBack }) {
                 Suggestions from your existing posts.
               </div>
             ) : null}
+          </div>
+
+          {/* post type */}
+          <div className="space-y-1 sm:col-span-2">
+            <label className="text-sm text-gray-700">Post type</label>
+            <select
+              className="w-full border rounded-md px-3 py-2 bg-white"
+              value={postType}
+              onChange={(e) => setPostType(e.target.value)}
+            >
+              <option value="blog">Blog</option>
+              <option value="social">Social</option>
+            </select>
+            <div className="text-xs text-gray-600">
+              Blog posts appear on /blog. Social posts appear on /social.
+            </div>
+          </div>
+
+          {/* series */}
+          <div className="space-y-1 sm:col-span-2">
+            <label className="text-sm text-gray-700">Series</label>
+            <select
+              className="w-full border rounded-md px-3 py-2 bg-white"
+              value={seriesId}
+              onChange={(e) => setSeriesId(e.target.value)}
+            >
+              <option value="">— none —</option>
+              {seriesList.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+            <div className="text-xs text-gray-600">
+              Optional. Series are managed in AdminSeries.
+            </div>
           </div>
 
           {/* cover */}

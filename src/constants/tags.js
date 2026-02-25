@@ -9,6 +9,10 @@ export const BOOK_TAGS = [
   "history",
   "steampunk",
   "fantasy",
+  "philosophical fiction",
+  "philosophy",
+  "nonfiction",
+  "journalism",
 ];
 
 export const BLOG_TAGS = [
@@ -22,6 +26,7 @@ export const BLOG_TAGS = [
   "essay",
   "culture",
   "ancient history",
+  "tech",
 ];
 
 export const ALL_TAGS = {

@@ -5,6 +5,7 @@ import Books from "../pages/Books";
 import Admin from "../pages/Admin";
 import Blog from "../pages/Blog";
 import BlogPost from "../pages/BlogPost";
+import Social from "../pages/Social";
 
 export default function App() {
   return (
@@ -17,6 +18,7 @@ export default function App() {
             <Route path="/books" element={<Books />} />
             <Route path="/blog" element={<Blog />} />
             <Route path="/blog/:id" element={<BlogPost />} />
+            <Route path="/social" element={<Social />} />
             <Route path="/admin" element={<Admin />} />
           </Routes>
         </main>

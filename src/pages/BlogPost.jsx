@@ -70,6 +70,12 @@ export default function BlogPost() {
         <h1 className="text-3xl font-semibold leading-tight">
           {post.title ?? "(untitled)"}
         </h1>
+        {post.seriesName ? (
+          <div className="border rounded-md px-3 py-2 text-sm text-gray-700 bg-white/5">
+            <span className="text-gray-500">Series: </span>
+            <span className="font-medium">{post.seriesName}</span>
+          </div>
+        ) : null}
 
         {post.description ? (
           <p className="text-gray-700">{post.description}</p>

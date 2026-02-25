@@ -17,6 +17,9 @@ export default function Nav() {
           <NavLink to="/blog" className={linkClass}>
             Blog
           </NavLink>
+          <NavLink to="/social" className={linkClass}>
+            Social
+          </NavLink>
           <NavLink to="/books" className={linkClass}>
             Books
           </NavLink>

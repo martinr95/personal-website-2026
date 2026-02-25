@@ -7,6 +7,7 @@ import {
 } from "firebase/auth";
 import AdminBooks from "./admin/AdminBooks";
 import AdminBlog from "./admin/AdminBlog";
+import AdminSeries from "./admin/AdminSeries";
 
 export default function Admin() {
   const [user, setUser] = useState(null);
@@ -72,22 +73,8 @@ export default function Admin() {
             <AdminBooks onBack={goBackToHub} />
           ) : mode === "blog" ? (
             <AdminBlog onBack={goBackToHub} />
-          ) : mode === "social" ? (
-            <div className="border rounded-lg p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="font-medium">Social posts</div>
-                  <div className="text-sm text-gray-700">Coming next.</div>
-                </div>
-                <button
-                  type="button"
-                  onClick={goBackToHub}
-                  className="px-3 py-2 rounded-md border hover:bg-gray-50"
-                >
-                  ← Back
-                </button>
-              </div>
-            </div>
+          ) : mode === "series" ? (
+            <AdminSeries onBack={goBackToHub} />
           ) : (
             // Hub view (select content type)
             <div className="space-y-3 border rounded-lg p-4">
@@ -119,11 +106,11 @@ export default function Admin() {
 
                 <button
                   type="button"
-                  onClick={() => setMode("social")}
+                  onClick={() => setMode("series")}
                   className="border rounded-lg p-3 text-left hover:bg-gray-50"
                 >
-                  <div className="font-medium">Social</div>
-                  <div className="text-sm text-gray-700">Diary feed</div>
+                  <div className="font-medium">Series</div>
+                  <div className="text-sm text-gray-700">Create a series</div>
                 </button>
               </div>
             </div>
