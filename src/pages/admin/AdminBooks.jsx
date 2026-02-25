@@ -214,7 +214,7 @@ export default function AdminBooks({ onBack }) {
               value={shortDesc}
               onChange={(e) => setShortDesc(e.target.value)}
               placeholder="One sentence: what is the book about?"
-              maxLength={180}
+              maxLength={280}
             />
             <div className="text-xs text-gray-600">
               Keep it short (1 sentence). Shown in the public books list.
