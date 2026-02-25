@@ -54,6 +54,11 @@ export default function Books() {
               </div>
 
               <div className="text-sm text-gray-600">{b.author}</div>
+              {b.shortDesc ? (
+                <div className="mt-3 text-sm text-gray-700 font-semibold mb-4">
+                  {b.shortDesc}
+                </div>
+              ) : null}
 
               {(b.favorites || b.suggested) && (
                 <div className="mt-2 flex gap-2 text-xs">

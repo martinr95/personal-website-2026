@@ -8,6 +8,7 @@ export default function AdminBooks({ onBack }) {
   // book form
   const [title, setTitle] = useState("");
   const [author, setAuthor] = useState("");
+  const [shortDesc, setShortDesc] = useState("");
   const [rating, setRating] = useState("");
   const [finishedAt, setFinishedAt] = useState("");
   const [notes, setNotes] = useState("");
@@ -62,6 +63,7 @@ export default function AdminBooks({ onBack }) {
     setEditingId(null);
     setTitle("");
     setAuthor("");
+    setShortDesc("");
     setRating("");
     setFinishedAt("");
     setNotes("");
@@ -77,6 +79,7 @@ export default function AdminBooks({ onBack }) {
 
     setTitle(b.title ?? "");
     setAuthor(b.author ?? "");
+    setShortDesc(b.shortDesc ?? "");
     setRating(
       typeof b.rating === "number" || typeof b.rating === "string"
         ? String(b.rating)
@@ -108,6 +111,7 @@ export default function AdminBooks({ onBack }) {
     const payload = {
       title: title.trim(),
       author: author.trim(),
+      shortDesc: shortDesc.trim() || null,
       rating: parsedRating, // number or null
       finishedAt: finishedAt ? finishedAt : null, // string date or null
       notes: notes, // keep rich text HTML as-is (don't .trim())
@@ -202,6 +206,19 @@ export default function AdminBooks({ onBack }) {
               onChange={(e) => setAuthor(e.target.value)}
               placeholder="e.g. Juan Rulfo"
             />
+          </div>
+          <div className="space-y-1 sm:col-span-2">
+            <label className="text-sm text-gray-700">Short description</label>
+            <input
+              className="w-full border rounded-md px-3 py-2"
+              value={shortDesc}
+              onChange={(e) => setShortDesc(e.target.value)}
+              placeholder="One sentence: what is the book about?"
+              maxLength={180}
+            />
+            <div className="text-xs text-gray-600">
+              Keep it short (1 sentence). Shown in the public books list.
+            </div>
           </div>
 
           <div className="space-y-1">
