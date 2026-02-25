@@ -28,7 +28,7 @@ export default function Blog() {
       <div>
         <h1 className="text-2xl font-semibold">Blog</h1>
         <p className="text-gray-700">
-          Random notes, travel, books, coding — whatever sticks.
+          Random notes, travel, ideas.. whatever fits.
         </p>
       </div>
 

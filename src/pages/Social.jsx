@@ -27,9 +27,7 @@ export default function Social() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Social</h1>
-        <p className="text-gray-700">
-          Shorter posts, quick updates, small thoughts — the “personal feed”.
-        </p>
+        <p className="text-gray-700">Welcome to my "personal" social media.</p>
       </div>
 
       {loading ? (
