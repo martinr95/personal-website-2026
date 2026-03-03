@@ -5,7 +5,6 @@ export const BOOK_TAGS = [
   "classic",
   "italian literature",
   "latin america",
-  "philosophy",
   "history",
   "steampunk",
   "fantasy",
@@ -13,6 +12,10 @@ export const BOOK_TAGS = [
   "philosophy",
   "nonfiction",
   "journalism",
+  "war",
+  "communism",
+  "biography",
+  "contemporary",
 ];
 
 export const BLOG_TAGS = [

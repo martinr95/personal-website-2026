@@ -13,7 +13,7 @@ import { db } from "./firebase";
 const booksCol = collection(db, "books");
 
 export async function listBooks() {
-  const q = query(booksCol, orderBy("createdAt", "desc"));
+  const q = query(booksCol, orderBy("finishedAt", "desc"));
   const snap = await getDocs(q);
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
